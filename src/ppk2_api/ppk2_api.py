@@ -205,7 +205,7 @@ class PPK2_API():
             bits = self._get_masked_value(adc_value, self.MEAS_LOGIC)
             analog_value = self.get_adc_result(
                 current_measurement_range, adc_result) * 10**6
-            return analog_value
+            return analog_value, bits
         except Exception as e:
             print("Measurement outside of range!")
             return None
@@ -338,13 +338,16 @@ class PPK2_API():
         sample_size = 4  # one analog value is 4 bytes in size
         offset = self.remainder["len"]
         samples = []
+        samples_logic = []
 
         first_reading = (
             self.remainder["sequence"] + buf[0:sample_size-offset])[:4]
         adc_val = self._digital_to_analog(first_reading)
-        measurement = self._handle_raw_data(adc_val)
-        if measurement is not None:
-            samples.append(measurement)
+        measurement_adc, measurement_logic = self._handle_raw_data(adc_val)
+        if measurement_adc is not None:
+            samples.append(measurement_adc)
+        if measurement_logic is not None:
+            samples_logic.append(measurement_logic)
 
         offset = sample_size - offset
 
@@ -352,14 +355,16 @@ class PPK2_API():
             next_val = buf[offset:offset + sample_size]
             offset += sample_size
             adc_val = self._digital_to_analog(next_val)
-            measurement = self._handle_raw_data(adc_val)
-            if measurement is not None:
-                samples.append(measurement)
+            measurement_adc, measurement_logic = self._handle_raw_data(adc_val)
+            if measurement_adc is not None:
+                samples.append(measurement_adc)
+            if measurement_logic is not None:
+                samples_logic.append(measurement_logic)
 
         self.remainder["sequence"] = buf[offset:len(buf)]
         self.remainder["len"] = len(buf)-offset
 
-        return samples  # return list of samples, handle those lists in PPK2 API wrapper
+        return samples, samples_logic  # return list of samples, handle those lists in PPK2 API wrapper
 
 
 class PPK_Fetch(threading.Thread):

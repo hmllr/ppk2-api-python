@@ -8,7 +8,7 @@ from threading import Thread
 from ppk2_api.ppk2_api import PPK2_MP as PPK2_API
 
 class PowerProfiler():
-    def __init__(self, serial_port=None, source_voltage_mV=3300, filename=None):
+    def __init__(self, serial_port=None, source_voltage_mV=1800, filename=None):
         """Initialize PPK2 power profiler with serial"""
         self.measuring = None
         self.measurement_thread = None
@@ -41,12 +41,13 @@ class PowerProfiler():
 
             self.source_voltage_mV = source_voltage_mV
 
-            self.ppk2.set_source_voltage(self.source_voltage_mV)  # set to 3.3V
+            self.ppk2.set_source_voltage(self.source_voltage_mV)  # set to 1.8V
 
             print(f"Set power profiler source voltage: {self.source_voltage_mV}")
 
             self.measuring = False
             self.current_measurements = []
+            self.current_measurements_logic = []
 
             # local variables used to calculate power consumption
             self.measurement_start_time = None
@@ -65,7 +66,7 @@ class PowerProfiler():
                 with open(self.filename, 'w', newline='') as file:
                     writer = csv.writer(file)
                     row = []
-                    for key in ["ts", "avg1000"]:
+                    for key in ["ts", "uA"]:
                         row.append(key)
                     writer.writerow(row)
 
@@ -73,8 +74,11 @@ class PowerProfiler():
         """Write csv row"""
         with open(self.filename, 'a', newline='') as file:
             writer = csv.writer(file)
+            time_sample = datetime.datetime.now()
+            deltaT = datetime.timedelta(milliseconds=1)/100
             for sample in samples:
-                row = [datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S.%f'), sample]
+                time_sample += deltaT
+                row = [time_sample.strftime('%d-%m-%Y %H:%M:%S.%f'), sample]
                 writer.writerow(row)
 
     def delete_power_profiler(self):
@@ -127,8 +131,9 @@ class PowerProfiler():
             if self.measuring:  # read data if currently measuring
                 read_data = self.ppk2.get_data()
                 if read_data != b'':
-                    samples = self.ppk2.get_samples(read_data)
+                    samples, samples_logic = self.ppk2.get_samples(read_data)
                     self.current_measurements += samples  # can easily sum lists, will append individual data
+                    self.current_measurements_logic += samples_logic  # can easily sum lists, will append individual data
             time.sleep(0.001)  # TODO figure out correct sleep duration
 
     def _average_samples(self, list, window_size):
@@ -144,6 +149,7 @@ class PowerProfiler():
         """Start measuring"""
         if not self.measuring:  # toggle measuring flag only if currently not measuring
             self.current_measurements = []  # reset current measurements
+            self.current_measurements_logic = []  # reset current measurements
             self.measuring = True  # set internal flag
             self.ppk2.start_measuring()  # send command to ppk2
             self.measurement_start_time = time.time()
@@ -157,6 +163,7 @@ class PowerProfiler():
         #samples_average = self._average_samples(self.current_measurements, 1000)
         if self.filename is not None:
             self.write_csv_rows(self.current_measurements)
+            self.write_csv_rows(self.current_measurements_logic)
 
     def get_min_current_mA(self):
         return min(self.current_measurements) / 1000
